@@ -1,0 +1,15 @@
+# Terraform
+terraform/build/
+terraform/.terraform/
+terraform/*.tfstate*
+# terraform/.terraform.lock.hcl is intentionally NOT ignored - it's committed
+
+# Python
+__pycache__/
+*.pyc
+
+# macOS
+.DS_Store
+
+# Stray local test output
+out.json
