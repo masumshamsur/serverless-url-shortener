@@ -411,9 +411,68 @@ Full CI/CD pipeline exists and is verified end-to-end with a real push to
 - ✅ `deploy.yml`: `validate` (credential-free) and `deploy` (OIDC-assumed,
   gated on push to main) — both confirmed green on a live run
 
-**Next:** the temporary OIDC debug step has been removed from `deploy.yml`
-now that the trust policy is confirmed working — push that cleanup, then
-do one final live test (a trivial code change, pushed, watched deploying
-automatically end-to-end) to close out the whole project.
+---
+
+## Step 5 — Live end-to-end test: real code change, automatic deploy
+
+**What was tested:** a genuine (not throwaway) code change — adding the
+already-stored `createdAt` timestamp to `create_link`'s response body —
+pushed to `main` with zero manual deploy steps, to prove the pipeline
+ships real code changes end-to-end.
+
+**Code change:** `_put_with_unique_code` now returns `(shortCode,
+createdAt)` instead of just `shortCode`; `handler` includes `createdAt` in
+the 201 response.
+
+**Commands run:**
+```bash
+python3 -m py_compile src/create_link/app.py   # local syntax check first
+git add src/create_link/app.py
+git commit -m "Include createdAt timestamp in create_link response"
+git push
+gh run watch
+
+curl -s -X POST https://<endpoint>/links -H "Content-Type: application/json" \
+  -d '{"url": "https://aws.amazon.com"}'
+```
+
+**Result:** run `36369315672` — both `Validate Terraform` and `Deploy
+Lambda code` completed successfully with zero manual intervention. The
+live API's response changed to match the new code exactly:
+```json
+{"shortCode": "MHtOkGa", "longUrl": "https://aws.amazon.com", "createdAt": 1790562044}
+```
+This is the strongest possible confirmation the pipeline works — not just
+that the jobs go green, but that pushing to `main` demonstrably changes
+what the running service does.
+
+(Non-blocking annotation noted in the run: GitHub flagged
+`actions/checkout@v4` and `hashicorp/setup-terraform@v3` as targeting a
+deprecated Node.js runtime version, auto-upgraded by GitHub's runner for
+now. Not an error — just a signal that pinned action versions will
+eventually need bumping, the same maintenance concern as any pinned
+dependency.)
+
+**Status:** ✅ complete.
+
+---
+
+## Phase 3 wrap-up
+
+Full CI/CD pipeline built, debugged, and verified with a real, live,
+automatic deploy:
+
+- ✅ Code pushed to a public GitHub repo with a clean `.gitignore`
+- ✅ OIDC trust established between GitHub Actions and AWS — no stored
+  AWS keys anywhere in GitHub
+- ✅ Deploy role scoped to exactly `lambda:UpdateFunctionCode` on exactly
+  the two project functions
+- ✅ `deploy.yml` validates Terraform credential-free and deploys via
+  OIDC-assumed credentials, gated to pushes on `main`
+- ✅ A real code change, pushed with no manual AWS interaction, correctly
+  changed the live API's behavior — confirmed via curl
+
+**Project status: all three phases complete.** See the top-level
+[project wrap-up](./README.md) for the full picture.
 
 ---
