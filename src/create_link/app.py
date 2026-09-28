@@ -61,22 +61,24 @@ def _response(status_code: int, body: dict) -> dict:
     }
 
 
-def _put_with_unique_code(long_url: str) -> str:
+def _put_with_unique_code(long_url: str) -> tuple[str, int]:
     """Generate a short code and write the item, retrying on the rare
-    collision. Raises RuntimeError if it can't find a free code."""
+    collision. Returns (shortCode, createdAt). Raises RuntimeError if it
+    can't find a free code."""
     for attempt in range(1, MAX_PUT_ATTEMPTS + 1):
         code = generate_short_code()
+        created_at = int(time.time())
         try:
             table.put_item(
                 Item={
                     "shortCode": code,
                     "longUrl": long_url,
                     "clicks": 0,
-                    "createdAt": int(time.time()),
+                    "createdAt": created_at,
                 },
                 ConditionExpression="attribute_not_exists(shortCode)",
             )
-            return code
+            return code, created_at
         except ClientError as e:
             if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
                 logger.warning("Short code collision on attempt %d: %s", attempt, code)
@@ -98,10 +100,13 @@ def handler(event, context):
         except ValidationError as e:
             return _response(400, {"message": str(e)})
 
-        short_code = _put_with_unique_code(long_url)
+        short_code, created_at = _put_with_unique_code(long_url)
         logger.info("Created short link %s -> %s", short_code, long_url)
 
-        return _response(201, {"shortCode": short_code, "longUrl": long_url})
+        return _response(
+            201,
+            {"shortCode": short_code, "longUrl": long_url, "createdAt": created_at},
+        )
 
     except Exception:
         logger.exception("Unhandled error in create_link")
