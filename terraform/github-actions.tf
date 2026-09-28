@@ -19,11 +19,16 @@ data "aws_iam_policy_document" "github_actions_assume_role" {
       values   = ["sts.amazonaws.com"]
     }
 
-    # Only workflow runs from pushes to main, in exactly this repo
+    # Only workflow runs from pushes to main, in exactly this repo.
+    # Note: GitHub's sub claim is ID-qualified (owner@ownerId/repo@repoId),
+    # not just plain names - confirmed by decoding a real token (see
+    # docs/phase-3-cicd.md Step 4 for how). This format is actually more
+    # robust: it survives a repo or username rename since the numeric IDs
+    # never change, unlike a plain-name match would.
     condition {
       test     = "StringEquals"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = ["repo:masumshamsur/serverless-url-shortener:ref:refs/heads/main"]
+      values   = ["repo:masumshamsur@128269966/serverless-url-shortener@1388368455:ref:refs/heads/main"]
     }
   }
 }
