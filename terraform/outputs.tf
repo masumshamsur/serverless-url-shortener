@@ -17,3 +17,8 @@ output "redirect_function_name" {
   description = "Lambda function name for the redirect handler"
   value       = aws_lambda_function.redirect.function_name
 }
+
+output "github_actions_deploy_role_arn" {
+  description = "IAM role ARN for GitHub Actions to assume via OIDC"
+  value       = aws_iam_role.github_actions_deploy.arn
+}

@@ -1,0 +1,66 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate Terraform
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: terraform
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.16.3"
+
+      - name: terraform init (no backend, no AWS credentials)
+        run: terraform init -backend=false
+
+      - name: terraform validate
+        run: terraform validate
+
+      - name: terraform fmt check
+        run: terraform fmt -check -recursive
+
+  deploy:
+    name: Deploy Lambda code
+    needs: validate
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write # required to request the OIDC token
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::842190336606:role/url-shortener-github-actions-deploy
+          aws-region: us-east-1
+
+      - name: Zip and deploy create_link
+        run: |
+          cd src/create_link
+          zip -r ../../create_link.zip .
+          aws lambda update-function-code \
+            --function-name url-shortener-create-link \
+            --zip-file fileb://../../create_link.zip
+
+      - name: Zip and deploy redirect
+        run: |
+          cd src/redirect
+          zip -r ../../redirect.zip .
+          aws lambda update-function-code \
+            --function-name url-shortener-redirect \
+            --zip-file fileb://../../redirect.zip

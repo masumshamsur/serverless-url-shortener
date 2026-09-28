@@ -233,4 +233,46 @@ the client is what follows it.
 
 ## Phase 3 — CI/CD
 
-*(to be filled in as Phase 3 progresses)*
+### What to commit vs. ignore in a Terraform repo
+Never commit `terraform.tfstate`(`.backup`) (sensitive values, immediate
+multi-writer conflicts) or `.terraform/` (regenerated provider binaries).
+Always commit `.terraform.lock.hcl` — small, human-readable, and it's what
+makes CI resolve the identical provider version used locally.
+
+### OIDC federation vs. long-lived AWS keys
+A static access key + secret in a GitHub secret works forever, from
+anywhere, until manually revoked. OIDC federation issues short-lived,
+per-run credentials: GitHub's runner presents a signed token to AWS STS,
+which verifies it and returns temporary credentials (default 1hr) scoped to
+one role — never stored as a static secret.
+
+### OIDC identity provider is one-per-account
+`aws_iam_openid_connect_provider` for a given URL (e.g.
+`token.actions.githubusercontent.com`) can exist only once per AWS account.
+Reuse an existing one via a data-source lookup rather than creating a
+duplicate — a read-only reference, not an import into this project's state.
+
+### The trust policy Condition block, not IdP registration, enforces scope
+Registering the IdP only says "AWS trusts tokens signed by GitHub." Which
+specific repo/branch may assume a given role is enforced by that role's
+trust policy `Condition`, matched against the token's `sub` claim (e.g.
+`repo:org/name:ref:refs/heads/main`). A careless wildcard here is the
+actual security hole, not the IdP's mere existence.
+
+### OIDC `aud` claim alongside `sub`
+`aud` (audience) asserts the token was minted specifically for AWS STS;
+`sub` (subject) asserts which repo/branch. Checking both is standard:
+`aud` confirms "meant for AWS," `sub` confirms "and specifically this repo."
+
+### `archive_file` zips the filesystem, not the git index
+`.gitignore` is irrelevant to `archive_file` — it zips whatever is
+literally present in `source_dir` at apply time. Locally regenerated
+artifacts (e.g. `__pycache__`) can get bundled into a deployed Lambda
+package unless explicitly excluded via `excludes`.
+
+### Scoping CI to the single verb it needs
+A deploy pipeline that only needs to push code should get exactly
+`lambda:UpdateFunctionCode` (not `InvokeFunction`, not config changes, not
+`*` actions), scoped to the literal function ARNs (never a wildcard
+resource) — so a compromised pipeline run is contained to "can redeploy
+these two functions' code," nothing more.

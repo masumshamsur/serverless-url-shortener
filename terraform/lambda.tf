@@ -4,6 +4,7 @@ data "archive_file" "create_link" {
   type        = "zip"
   source_dir  = "${path.module}/../src/create_link"
   output_path = "${path.module}/build/create_link.zip"
+  excludes    = ["__pycache__"]
 }
 
 resource "aws_cloudwatch_log_group" "create_link" {
@@ -36,6 +37,7 @@ data "archive_file" "redirect" {
   type        = "zip"
   source_dir  = "${path.module}/../src/redirect"
   output_path = "${path.module}/build/redirect.zip"
+  excludes    = ["__pycache__"]
 }
 
 resource "aws_cloudwatch_log_group" "redirect" {
