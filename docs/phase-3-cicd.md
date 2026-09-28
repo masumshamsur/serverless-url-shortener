@@ -257,3 +257,163 @@ least-privilege principle as the Lambda execution role in Phase 1 Step 3,
 applied to a different actor (CI) with an even narrower single verb.
 
 ---
+
+## Step 4 — `deploy.yml`
+
+**What was built:** `.github/workflows/deploy.yml` — two jobs. `validate`
+runs on every push/PR to `main`, needs no AWS credentials
+(`terraform init -backend=false`, `terraform validate`,
+`terraform fmt -check -recursive`). `deploy` runs only on an actual push
+to `main` (`if: github.ref == 'refs/heads/main' && github.event_name ==
+'push'`), `needs: validate`, assumes the OIDC role via
+`aws-actions/configure-aws-credentials@v4`, then zips and
+`aws lambda update-function-code`s both functions directly (no Terraform
+in this job — see the "why hardcoded names" note below).
+
+```yaml
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: terraform
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.16.3"
+      - run: terraform init -backend=false
+      - run: terraform validate
+      - run: terraform fmt -check -recursive
+
+  deploy:
+    needs: validate
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::842190336606:role/url-shortener-github-actions-deploy
+          aws-region: us-east-1
+      - run: |
+          cd src/create_link && zip -r ../../create_link.zip .
+          aws lambda update-function-code --function-name url-shortener-create-link \
+            --zip-file fileb://../../create_link.zip
+      - run: |
+          cd src/redirect && zip -r ../../redirect.zip .
+          aws lambda update-function-code --function-name url-shortener-redirect \
+            --zip-file fileb://../../redirect.zip
+```
+
+**This step included a real debugging saga** — the OIDC trust policy
+initially failed with `Not authorized to perform
+sts:AssumeRoleWithWebIdentity` on every attempt. Full diagnosis (a
+temporary JWT-decoding debug step, root cause, fix) is written up in
+[`troubleshooting.md`](./troubleshooting.md) entry #1 rather than
+duplicated here — short version: GitHub's real `sub` claim is
+**ID-qualified** (`repo:owner@ownerId/repo@repoId:ref:...`), not the
+plain-name format the trust policy was originally written with. Fixed by
+updating the `sub` condition value to match the real, decoded token, then
+removed the temporary debug step once confirmed working.
+
+**Commands run (final, working sequence):**
+```bash
+cd terraform
+terraform plan     # 1 to change (trust policy sub condition)
+terraform apply
+cd ..
+git add terraform/github-actions.tf
+git commit -m "Fix OIDC trust policy: use GitHub's ID-qualified sub claim format"
+git push
+gh run list --limit 2
+```
+
+**Result:** run `36368491904` — both jobs green. `Configure AWS
+credentials via OIDC` succeeded; both `Zip and deploy` steps ran
+`aws lambda update-function-code` successfully, confirmed via each step's
+returned function config (correct runtime, architecture, env vars, updated
+`LastModified` timestamp).
+
+**Status:** ✅ complete.
+
+### Concepts introduced
+
+**Job-level `permissions` for OIDC.**
+A job's default token has no `id-token` permission — it must be declared
+explicitly:
+```yaml
+permissions:
+  id-token: write
+  contents: read
+```
+`id-token: write` is what lets the job request an OIDC token from GitHub
+at all; without it, `configure-aws-credentials` fails before ever reaching
+AWS. This is a deliberate opt-in security control on GitHub's side too —
+no third-party Action in the workflow can silently start requesting AWS
+credentials unless the job explicitly grants this.
+
+**`aws-actions/configure-aws-credentials` performs the actual OIDC
+handshake.**
+Requests a token from GitHub (audience `sts.amazonaws.com`), calls
+`sts:AssumeRoleWithWebIdentity` against `role-to-assume`, and exports the
+resulting temporary credentials as environment variables for every
+subsequent step in the job. The credentials are never seen or handled
+directly in workflow code.
+
+**Two jobs, one trigger, different conditions.**
+Both jobs run on push/PR to `main`, but `deploy` adds
+`if: github.ref == 'refs/heads/main' && github.event_name == 'push'` and
+`needs: validate`. A PR against `main` runs `validate` only (catching
+Terraform errors pre-merge) and never attempts a deploy; only an actual
+push to `main` triggers `deploy`, and only after `validate` passes.
+
+**`terraform validate` still needs `terraform init`, just not credentials.**
+`init` sets up the working directory (downloads providers) even though
+`validate` itself makes no AWS calls. `terraform init -backend=false`
+skips backend initialization, keeping the whole `validate` job genuinely
+credential-free — also what you'd need with a remote backend to avoid
+requiring credentials just to check syntax.
+
+**GitHub's ID-qualified OIDC `sub` claim.**
+The real `sub` claim format is `repo:owner@ownerId/repo@repoId:ref:...`,
+not just `repo:owner/repo:ref:...`. This is actually more robust than the
+plain-name form — the numeric IDs survive a repo or username rename, while
+a plain-name trust policy would silently stop matching after either. See
+[`troubleshooting.md`](./troubleshooting.md) for the full diagnosis.
+
+**Debugging a federated-identity failure by decoding the real token.**
+`Not authorized` (a trust-policy condition mismatch) is a different
+failure mode from an `Invalid identity token` error (an IdP
+registration/thumbprint problem) — the error text itself narrows where to
+look. For the former, don't guess the claim format from memory or docs:
+request the actual token and decode its JWT payload (just base64, not
+encrypted) to see the real values. This generalizes well beyond
+AWS+GitHub to any OIDC/JWT-based debugging.
+
+---
+
+## Phase 3 wrap-up
+
+Full CI/CD pipeline exists and is verified end-to-end with a real push to
+`main`:
+
+- ✅ Code pushed to a public GitHub repo, `.gitignore` excluding state,
+  provider binaries, and build artifacts, `.terraform.lock.hcl` committed
+- ✅ OIDC identity provider (reused, one-per-account) + trust policy scoped
+  to exactly this repo's `main` branch, via GitHub's real ID-qualified
+  `sub` claim format
+- ✅ Deploy role's permissions limited to `lambda:UpdateFunctionCode` on
+  exactly the two project functions
+- ✅ `deploy.yml`: `validate` (credential-free) and `deploy` (OIDC-assumed,
+  gated on push to main) — both confirmed green on a live run
+
+**Next:** the temporary OIDC debug step has been removed from `deploy.yml`
+now that the trust policy is confirmed working — push that cleanup, then
+do one final live test (a trivial code change, pushed, watched deploying
+automatically end-to-end) to close out the whole project.
+
+---

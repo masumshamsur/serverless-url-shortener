@@ -17,6 +17,7 @@ order it was actually built. It exists for two purposes:
 | [`phase-2-application-code.md`](./phase-2-application-code.md) | Python Lambda logic: short-code generation, DynamoDB access, validation, error handling |
 | [`phase-3-cicd.md`](./phase-3-cicd.md) | Git, GitHub, OIDC, GitHub Actions deploy pipeline |
 | [`concepts-glossary.md`](./concepts-glossary.md) | Every new concept introduced across all phases, in one flat reference list |
+| [`troubleshooting.md`](./troubleshooting.md) | Every real issue hit, how it was diagnosed, root cause, and the fix |
 
 ## Project summary
 

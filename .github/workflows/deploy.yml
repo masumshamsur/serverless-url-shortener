@@ -43,15 +43,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # TEMPORARY debug step - remove once OIDC assumption is confirmed working.
-      # Prints the actual sub/aud claims GitHub issues, so we can compare them
-      # byte-for-byte against the AWS role's trust policy condition values.
-      - name: Debug - decode OIDC token claims
-        run: |
-          IDTOKEN=$(curl -sSL -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
-            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=sts.amazonaws.com" | jq -r '.value')
-          echo "$IDTOKEN" | cut -d '.' -f2 | base64 -d 2>/dev/null | jq .
-
       - name: Configure AWS credentials via OIDC
         uses: aws-actions/configure-aws-credentials@v4
         with:

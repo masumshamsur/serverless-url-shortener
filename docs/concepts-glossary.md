@@ -276,3 +276,38 @@ A deploy pipeline that only needs to push code should get exactly
 `*` actions), scoped to the literal function ARNs (never a wildcard
 resource) — so a compromised pipeline run is contained to "can redeploy
 these two functions' code," nothing more.
+
+### Job-level `permissions: id-token: write` for OIDC
+Not granted by default — a job must explicitly opt in before it can request
+an OIDC token from GitHub at all. Deliberate: prevents any third-party
+Action in a workflow from silently requesting AWS credentials.
+
+### What `aws-actions/configure-aws-credentials` actually does
+Requests a GitHub OIDC token (with the right audience), calls
+`sts:AssumeRoleWithWebIdentity`, and exports the resulting temporary
+credentials as env vars for later steps — the handshake is never handled
+manually in workflow code.
+
+### Gating a CI job on branch + event, not just the workflow trigger
+`if: github.ref == 'refs/heads/main' && github.event_name == 'push'` on a
+job (combined with `needs: <other job>`) lets a PR run validation without
+ever attempting a deploy, while only a real push to main triggers the
+deploy — finer-grained than the top-level `on:` trigger alone.
+
+### `terraform validate` needs `init`, not credentials
+`init` (provider download, working-directory setup) is a prerequisite for
+`validate` even though `validate` itself calls no AWS API.
+`terraform init -backend=false` keeps this genuinely credential-free.
+
+### GitHub's ID-qualified OIDC `sub` claim
+Real format: `repo:owner@ownerId/repo@repoId:ref:refs/heads/branch` — not
+just `repo:owner/repo:ref:...`. More robust than the plain-name form (the
+numeric IDs survive renames), but a trust policy must be written to match
+what's actually issued, not the older documented format.
+
+### Debugging OIDC/JWT trust failures by decoding the real token
+`Not authorized` (trust policy condition mismatch) vs. `Invalid identity
+token` (IdP registration/thumbprint problem) are different failure modes —
+the error text narrows where to look. For a condition mismatch, decode the
+actual JWT payload (it's base64, not encrypted) rather than assuming the
+documented claim format is what's really being issued.
