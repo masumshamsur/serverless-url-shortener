@@ -13,6 +13,32 @@ context.
 
 ---
 
+## Resume / LinkedIn bullet points
+
+**Full version (resume "Projects" section, 3-4 bullets):**
+
+> **Serverless URL Shortener** — Terraform, AWS Lambda, API Gateway, DynamoDB, GitHub Actions
+> *[github.com/masumshamsur/serverless-url-shortener]*
+> - Architected and provisioned a serverless AWS application (API Gateway, Lambda, DynamoDB, IAM, CloudWatch) entirely from scratch in Terraform, with zero console-created or imported resources
+> - Designed least-privilege IAM policies scoped to individual API actions and specific resource ARNs — a CI/CD deploy role limited to a single Lambda action on exactly 2 function resources, containing the blast radius of a compromised pipeline run
+> - Built a keyless CI/CD pipeline (GitHub Actions + OIDC federation) that eliminates all long-lived AWS credentials, using short-lived per-run STS credentials scoped by repository and branch
+> - Implemented correct DynamoDB concurrency handling — atomic counter increments and collision-guarded conditional writes — avoiding lost-update races under concurrent requests
+
+**Compact version (one-page resume, single line):**
+
+> Built and deployed a serverless URL shortener on AWS (Lambda, API Gateway, DynamoDB) with Terraform IaC and a keyless GitHub Actions CI/CD pipeline authenticated via OIDC — no stored AWS credentials.
+
+**LinkedIn "Projects" section (slightly more narrative):**
+
+> A small serverless app (AWS Lambda, API Gateway, DynamoDB) built to practice production-grade infrastructure and deployment practices on a deliberately minimal feature set. Every resource is provisioned from scratch in Terraform, and the CI/CD pipeline deploys via GitHub Actions using OIDC federation — meaning no AWS access keys are ever stored in GitHub. Along the way I debugged a real GitHub OIDC token-format mismatch by decoding the actual JWT rather than trusting documentation — full write-up in the repo. [link]
+
+Pick the version that fits the space you have — the full version is best
+for a dedicated "Projects" section, the compact one for a skills-dense
+one-pager, and the LinkedIn version leans slightly more narrative since
+that platform rewards a bit more context than a resume does.
+
+---
+
 ## Project overview (the 60-second version)
 
 **Q: Walk me through this project.**
