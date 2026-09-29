@@ -13,6 +13,7 @@ order it was actually built. It exists for two purposes:
 
 | File | Contents |
 |---|---|
+| [`architecture.md`](./architecture.md) | **Start here for the big picture** — objective, resource inventory, and diagrams showing how everything connects (runtime request flow + CI/CD deploy flow) |
 | [`phase-1-infrastructure.md`](./phase-1-infrastructure.md) | Terraform: provider, DynamoDB, IAM, Lambda, API Gateway, outputs |
 | [`phase-2-application-code.md`](./phase-2-application-code.md) | Python Lambda logic: short-code generation, DynamoDB access, validation, error handling |
 | [`phase-3-cicd.md`](./phase-3-cicd.md) | Git, GitHub, OIDC, GitHub Actions deploy pipeline |
